@@ -16,6 +16,33 @@ from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+SHARED_API_ENV_FILE = (
+    BASE_DIR.parent / "api" / "tmdb-streaming" / "environments" / ".env"
+)
+
+
+def _read_shared_env_value(key_name):
+    if not SHARED_API_ENV_FILE.exists():
+        return ""
+
+    content = SHARED_API_ENV_FILE.read_text(encoding="utf-8", errors="ignore")
+    key_variants = [key_name, key_name.lower()]
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line in {"vars {", "}"}:
+            continue
+
+        for variant in key_variants:
+            env_match = re.match(rf"^{re.escape(variant)}\s*=\s*(.+)$", line)
+            if env_match:
+                value = env_match.group(1).strip()
+                return value.strip("'\"")
+
+            legacy_match = re.match(rf"^{re.escape(variant)}\s*:\s*\"?([^\"\n]+)\"?$", line)
+            if legacy_match:
+                return legacy_match.group(1).strip()
+
+    return ""
 
 
 # Quick-start development settings - unsuitable for production
@@ -25,9 +52,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-=8e&h2naz6*na6mne4y8l1m@rr=(igde^7rz2cmal)r_o)raoo'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DEBUG", "true").lower() == "true"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
 
 
 # Application definition
@@ -45,11 +72,13 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'todo.middleware.SimpleCORSMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'todo.middleware.SecurityHeadersMiddleware',
 ]
 
 ROOT_URLCONF = 'todo.urls'
@@ -126,45 +155,91 @@ STATIC_URL = '/static/'
 # https://docs.djangoproject.com/en/3.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'list'
+LOGOUT_REDIRECT_URL = 'login'
 
-# TMDB integration for watchlist import buttons.
-def _read_local_tmdb_value(key_name):
-    candidate_files = [
-        BASE_DIR.parent / "api" / "tmdb-streaming" / "environments" / "dev.env",
-        BASE_DIR.parent / "api" / "tmdb-streaming" / "environments" / "dev.bru",
-    ]
-    name_variants = [key_name, key_name.lower()]
+AUTHENTICATION_BACKENDS = [
+    "tasks.auth_backends.EmailBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
 
-    for file_path in candidate_files:
-        if not file_path.exists():
-            continue
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", "false").lower() == "true"
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = "Lax"
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
 
-        content = file_path.read_text(encoding="utf-8", errors="ignore")
-        for raw_line in content.splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or line in {"vars {", "}"}:
-                continue
+SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
 
-            for variant in name_variants:
-                match = re.match(
-                    rf"^{re.escape(variant)}\s*[:=]\s*\"?([^\"\n]+)\"?$",
-                    line,
-                )
-                if match:
-                    return match.group(1).strip()
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "no-reply@watch-list.local")
 
-    return ""
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
+# FranceConnect v1 (OIDC) configuration.
+FRANCECONNECT_CLIENT_ID = os.environ.get(
+    "FRANCECONNECT_CLIENT_ID",
+    _read_shared_env_value("FRANCECONNECT_CLIENT_ID"),
+).strip()
+FRANCECONNECT_CLIENT_SECRET = os.environ.get(
+    "FRANCECONNECT_CLIENT_SECRET",
+    _read_shared_env_value("FRANCECONNECT_CLIENT_SECRET"),
+).strip()
+FRANCECONNECT_AUTHORIZE_URL = os.environ.get(
+    "FRANCECONNECT_AUTHORIZE_URL",
+    _read_shared_env_value("FRANCECONNECT_AUTHORIZE_URL")
+    or "https://fcp-low.integ01.dev-franceconnect.fr/api/v1/authorize",
+).strip()
+FRANCECONNECT_TOKEN_URL = os.environ.get(
+    "FRANCECONNECT_TOKEN_URL",
+    _read_shared_env_value("FRANCECONNECT_TOKEN_URL")
+    or "https://fcp-low.integ01.dev-franceconnect.fr/api/v1/token",
+).strip()
+FRANCECONNECT_USERINFO_URL = os.environ.get(
+    "FRANCECONNECT_USERINFO_URL",
+    _read_shared_env_value("FRANCECONNECT_USERINFO_URL")
+    or "https://fcp-low.integ01.dev-franceconnect.fr/api/v1/userinfo",
+).strip()
+FRANCECONNECT_SCOPE = os.environ.get(
+    "FRANCECONNECT_SCOPE",
+    _read_shared_env_value("FRANCECONNECT_SCOPE") or "openid profile email",
+).strip()
+FRANCECONNECT_REDIRECT_URI = os.environ.get(
+    "FRANCECONNECT_REDIRECT_URI",
+    _read_shared_env_value("FRANCECONNECT_REDIRECT_URI"),
+).strip()
+FRANCECONNECT_ENABLED = (
+    os.environ.get(
+        "FRANCECONNECT_ENABLED",
+        _read_shared_env_value("FRANCECONNECT_ENABLED") or "true",
+    ).lower()
+    == "true"
+    and bool(FRANCECONNECT_CLIENT_ID and FRANCECONNECT_CLIENT_SECRET)
+)
 
 TMDB_READ_ACCESS_TOKEN = os.environ.get(
     "TMDB_READ_ACCESS_TOKEN",
-    _read_local_tmdb_value("TMDB_READ_ACCESS_TOKEN"),
+    _read_shared_env_value("TMDB_READ_ACCESS_TOKEN"),
 )
 TMDB_LANGUAGE = os.environ.get(
     "TMDB_LANGUAGE",
-    _read_local_tmdb_value("TMDB_LANGUAGE") or "fr-FR",
+    _read_shared_env_value("TMDB_LANGUAGE") or "fr-FR",
 )
 TMDB_WATCH_REGION = os.environ.get(
     "TMDB_WATCH_REGION",
-    _read_local_tmdb_value("TMDB_WATCH_REGION") or "US",
+    _read_shared_env_value("TMDB_WATCH_REGION") or "US",
 )

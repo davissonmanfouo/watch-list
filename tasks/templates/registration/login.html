@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f6f8fb; margin: 0; }
+    .card { max-width: 460px; margin: 4rem auto; background: #fff; padding: 1.25rem; border: 1px solid #d4dbe5; border-radius: 8px; }
+    .field { margin-bottom: 1rem; }
+    label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+    input[type="email"], input[type="password"] { width: 100%; padding: 0.6rem; border: 1px solid #8da0b8; border-radius: 6px; }
+    .error { color: #a40000; font-size: 0.9rem; margin-top: 0.25rem; }
+    .error-summary { background: #ffe9e9; border: 1px solid #d14b4b; color: #6d0000; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.8rem; }
+    .actions { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+    button[type="submit"] { background: #0048cc; color: #fff; border: 0; border-radius: 6px; padding: 0.7rem 1rem; cursor: pointer; }
+    button[disabled] { opacity: 0.6; cursor: not-allowed; }
+    .toggle-btn { border: 1px solid #8da0b8; background: #fff; border-radius: 6px; padding: 0.45rem 0.6rem; cursor: pointer; }
+    .links { margin-top: 1rem; display: flex; justify-content: space-between; }
+    .social-login { margin-top: 0.9rem; }
+    .fc-btn {
+      display: inline-block;
+      width: 100%;
+      box-sizing: border-box;
+      text-align: center;
+      text-decoration: none;
+      background: #000091;
+      color: #fff;
+      border: 1px solid #000091;
+      border-radius: 6px;
+      padding: 0.7rem 1rem;
+      font-weight: 600;
+    }
+    .fc-btn:hover { background: #1212ff; border-color: #1212ff; }
+    :focus { outline: 3px solid #0048cc; outline-offset: 2px; }
+    .required { color: #a40000; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Connexion</h1>
+    {% if messages %}
+      {% for message in messages %}
+        <div class="error-summary" role="status">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+    {% if form.non_field_errors %}
+      <div class="error-summary" role="alert" aria-live="assertive">
+        {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+      </div>
+    {% endif %}
+    <form method="post" novalidate data-loading-form>
+      {% csrf_token %}
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      <div class="field">
+        <label for="id_email">Email <span class="required" aria-hidden="true">*</span></label>
+        <input id="id_email" type="email" name="email" required autocomplete="email" value="{{ form.email.value|default:'' }}" aria-describedby="email-error">
+        {% if form.email.errors %}<div id="email-error" class="error">{% for e in form.email.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="field">
+        <label for="id_password">Mot de passe <span class="required" aria-hidden="true">*</span></label>
+        <div style="display:flex; gap:0.4rem;">
+          <input id="id_password" type="password" name="password" required minlength="8" maxlength="128" autocomplete="current-password" aria-describedby="password-error" style="flex:1;">
+          <button class="toggle-btn" type="button" data-toggle-password data-target="id_password" aria-label="Afficher le mot de passe">Afficher</button>
+        </div>
+        {% if form.password.errors %}<div id="password-error" class="error">{% for e in form.password.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="field">
+        <label for="id_remember_me" style="display:flex;align-items:center;gap:.4rem;">
+          <input id="id_remember_me" type="checkbox" name="remember_me" {% if form.remember_me.value %}checked{% endif %}>
+          Se souvenir de moi
+        </label>
+      </div>
+      <div class="actions">
+        <button type="submit"><span data-btn-text>Se connecter</span> <span data-btn-loader hidden>Chargement...</span></button>
+      </div>
+    </form>
+    {% if franceconnect_enabled %}
+      <div class="social-login">
+        <a
+          class="fc-btn"
+          href="{% url 'franceconnect_login' %}{% if next %}?next={{ next|urlencode }}{% endif %}"
+        >
+          Se connecter avec FranceConnect
+        </a>
+      </div>
+    {% endif %}
+    <div class="links">
+      <a href="{% url 'register' %}">Créer un compte</a>
+      <a href="{% url 'forgot_password' %}">Mot de passe oublié ?</a>
+    </div>
+  </main>
+  <script>
+    (function () {
+      var form = document.querySelector("[data-loading-form]");
+      if (form) {
+        form.addEventListener("submit", function () {
+          var btn = form.querySelector("button[type='submit']");
+          if (!btn) return;
+          btn.disabled = true;
+          var txt = btn.querySelector("[data-btn-text]");
+          var loader = btn.querySelector("[data-btn-loader]");
+          if (txt) txt.hidden = true;
+          if (loader) loader.hidden = false;
+        });
+      }
+      document.querySelectorAll("[data-toggle-password]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var input = document.getElementById(btn.getAttribute("data-target"));
+          if (!input) return;
+          var isPassword = input.getAttribute("type") === "password";
+          input.setAttribute("type", isPassword ? "text" : "password");
+          btn.textContent = isPassword ? "Masquer" : "Afficher";
+          btn.setAttribute("aria-label", isPassword ? "Masquer le mot de passe" : "Afficher le mot de passe");
+        });
+      });
+      var emailInput = document.getElementById("id_email");
+      if (emailInput) emailInput.focus();
+    })();
+  </script>
+</body>
+</html>
