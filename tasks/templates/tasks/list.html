@@ -45,16 +45,42 @@
 		border-color: #e59400;
 	}
 
+	.watchlist-form{
+		margin-top: 8px;
+	}
+
+	.watchlist-form button{
+		width: 100%;
+	}
+
 </style>
 <h1 style="text-align: center; color: #fb5607; font-size: 125px;        text-shadow: -10px 0 black, 0 10px black, 10px 0 black, 0 -10px black;
 
-"><b>TO DO LIST</b></h1>
+"><b>WATCH LIST</b></h1>
 <div  class="center-column">
-	<form method="POST" action="/">
+
+	<form method="POST" action="{% url 'add_watchlist_provider' 'netflix' %}" class="watchlist-form">
 		{% csrf_token %}
-		{{form.title}}
-		<input class="btn btn-info" type="submit" name="Create Task">
+		<button class="btn btn-primary" type="submit">Ajouter 10 séries Netflix à ma watchlist</button>
 	</form>
+
+	<form method="POST" action="{% url 'add_watchlist_provider' 'amazon-prime' %}" class="watchlist-form">
+		{% csrf_token %}
+		<button class="btn btn-success" type="submit">Ajouter 10 séries Amazon Prime à ma watchlist</button>
+	</form>
+
+	<form method="POST" action="{% url 'add_watchlist_provider' 'apple-tv' %}" class="watchlist-form">
+		{% csrf_token %}
+		<button class="btn btn-dark" type="submit">Ajouter 10 séries Apple TV à ma watchlist</button>
+	</form>
+
+	{% if messages %}
+		<div style="margin-top: 12px;">
+			{% for message in messages %}
+				<div class="alert alert-info" role="alert">{{ message }}</div>
+			{% endfor %}
+		</div>
+	{% endif %}
 
 	<div class="todo-list">
 	{% for task in tasks %}

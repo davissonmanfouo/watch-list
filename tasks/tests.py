@@ -1,4 +1,9 @@
+import json
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
+
 from django.test import TestCase
+from django.test.utils import override_settings
 from django.urls import reverse
 
 from tasks.models import Task
@@ -95,3 +100,122 @@ class TaskViewsTest(TestCase):
 
         self.assertEqual(Task.objects.count(), 0)
         self.assertRedirects(response, "/")
+
+    def test_add_watchlist_provider_requires_post(self):
+        response = self.client.get(
+            reverse("add_watchlist_provider", kwargs={"provider_slug": "netflix"})
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_add_watchlist_provider_invalid_slug(self):
+        response = self.client.post(
+            reverse("add_watchlist_provider", kwargs={"provider_slug": "invalid"})
+        )
+        self.assertRedirects(response, "/")
+
+    def _assert_watchlist_import(self, provider_slug, label, provider_id):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def read(self):
+                return json.dumps(self.payload).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        payload = {
+            "results": [{"id": index, "name": f"Serie {index}"} for index in range(1, 11)],
+            "total_pages": 1,
+        }
+        with patch("tasks.views.urlopen") as mocked_urlopen:
+            mocked_urlopen.return_value = FakeResponse(payload)
+            response = self.client.post(
+                reverse("add_watchlist_provider", kwargs={"provider_slug": provider_slug})
+            )
+
+        self.assertRedirects(response, "/")
+        self.assertEqual(Task.objects.filter(title__startswith=f"[{label}]").count(), 10)
+        self.assertIn(f"with_watch_providers={provider_id}", mocked_urlopen.call_args[0][0].full_url)
+        self.assertEqual(
+            Task.objects.filter(provider_service_id=provider_id, tmdb_series_id__isnull=False).count(),
+            10,
+        )
+
+    @override_settings(
+        TMDB_READ_ACCESS_TOKEN="token",
+        TMDB_LANGUAGE="fr-FR",
+        TMDB_WATCH_REGION="US",
+    )
+    def test_add_netflix_watchlist_creates_10_tasks(self):
+        self._assert_watchlist_import("netflix", "Netflix", "8")
+
+    @override_settings(
+        TMDB_READ_ACCESS_TOKEN="token",
+        TMDB_LANGUAGE="fr-FR",
+        TMDB_WATCH_REGION="US",
+    )
+    def test_add_amazon_watchlist_creates_10_tasks(self):
+        self._assert_watchlist_import("amazon-prime", "Amazon Prime Video", "9")
+
+    @override_settings(
+        TMDB_READ_ACCESS_TOKEN="token",
+        TMDB_LANGUAGE="fr-FR",
+        TMDB_WATCH_REGION="US",
+    )
+    def test_add_apple_watchlist_creates_10_tasks(self):
+        self._assert_watchlist_import("apple-tv", "Apple TV", "350")
+
+    @override_settings(
+        TMDB_READ_ACCESS_TOKEN="token",
+        TMDB_LANGUAGE="fr-FR",
+        TMDB_WATCH_REGION="US",
+    )
+    def test_double_click_netflix_adds_20_distinct_series(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def read(self):
+                return json.dumps(self.payload).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        def fake_urlopen(request, timeout=10):
+            parsed = urlparse(request.full_url)
+            query = parse_qs(parsed.query)
+            page = int(query.get("page", ["1"])[0])
+
+            if page == 1:
+                results = [{"id": index, "name": f"Netflix Serie {index}"} for index in range(1, 11)]
+                payload = {"results": results, "total_pages": 2}
+            elif page == 2:
+                results = [{"id": index, "name": f"Netflix Serie {index}"} for index in range(11, 21)]
+                payload = {"results": results, "total_pages": 2}
+            else:
+                payload = {"results": [], "total_pages": 2}
+
+            return FakeResponse(payload)
+
+        with patch("tasks.views.urlopen", side_effect=fake_urlopen):
+            response_first = self.client.post(
+                reverse("add_watchlist_provider", kwargs={"provider_slug": "netflix"})
+            )
+            response_second = self.client.post(
+                reverse("add_watchlist_provider", kwargs={"provider_slug": "netflix"})
+            )
+
+        self.assertRedirects(response_first, "/")
+        self.assertRedirects(response_second, "/")
+        self.assertEqual(Task.objects.filter(provider_service_id="8").count(), 20)
+        self.assertEqual(
+            Task.objects.filter(provider_service_id="8").values("tmdb_series_id").distinct().count(),
+            20,
+        )

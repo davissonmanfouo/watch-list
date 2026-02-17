@@ -10,6 +10,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/3.2/ref/settings/
 """
 
+import os
+import re
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -124,3 +126,45 @@ STATIC_URL = '/static/'
 # https://docs.djangoproject.com/en/3.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# TMDB integration for watchlist import buttons.
+def _read_local_tmdb_value(key_name):
+    candidate_files = [
+        BASE_DIR.parent / "api" / "tmdb-streaming" / "environments" / "dev.env",
+        BASE_DIR.parent / "api" / "tmdb-streaming" / "environments" / "dev.bru",
+    ]
+    name_variants = [key_name, key_name.lower()]
+
+    for file_path in candidate_files:
+        if not file_path.exists():
+            continue
+
+        content = file_path.read_text(encoding="utf-8", errors="ignore")
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or line in {"vars {", "}"}:
+                continue
+
+            for variant in name_variants:
+                match = re.match(
+                    rf"^{re.escape(variant)}\s*[:=]\s*\"?([^\"\n]+)\"?$",
+                    line,
+                )
+                if match:
+                    return match.group(1).strip()
+
+    return ""
+
+
+TMDB_READ_ACCESS_TOKEN = os.environ.get(
+    "TMDB_READ_ACCESS_TOKEN",
+    _read_local_tmdb_value("TMDB_READ_ACCESS_TOKEN"),
+)
+TMDB_LANGUAGE = os.environ.get(
+    "TMDB_LANGUAGE",
+    _read_local_tmdb_value("TMDB_LANGUAGE") or "fr-FR",
+)
+TMDB_WATCH_REGION = os.environ.get(
+    "TMDB_WATCH_REGION",
+    _read_local_tmdb_value("TMDB_WATCH_REGION") or "US",
+)
